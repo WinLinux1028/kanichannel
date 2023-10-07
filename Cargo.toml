@@ -1,0 +1,31 @@
+[package]
+name = "bbschan"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mimalloc = { version = "0.1", default-features = false }
+
+serde = { version = "1", features = ["derive", "alloc", "rc"] }
+serde_json = "1"
+
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.6", features = ["headers", "http2", "multipart", "ws"] }
+
+sqlx = { version = "0.7", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+] }
+
+encoding_rs = "0.8"
+chrono = "0.4"
+ammonia = "3"
+regex = "1"
+rand = "0.8"
+sha3 = "0.10"
+base-62 = "0.1"
+percent-encoding = "2.3"
+serde_urlencoded = "0.7"

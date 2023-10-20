@@ -29,7 +29,7 @@ async fn main() -> Result<(), Error> {
     let mut salt_f = File::open("./salt.bin").await;
     if salt_f.is_err() {
         let mut new_salt = BufWriter::new(File::create("./salt.bin").await?);
-        for _ in 0..224 {
+        for _ in 0..28 {
             new_salt.write_all(&[rand::thread_rng().gen()]).await?;
         }
         new_salt.flush().await?;

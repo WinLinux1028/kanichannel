@@ -3,6 +3,13 @@ use crate::Error;
 use sqlx::PgPool;
 
 pub async fn init(db: &PgPool) -> Result<(), Error> {
+    // sqlx::query(
+    //     "CREATE TABLE IF NOT EXISTS boards(
+    //     ",
+    // )
+    // .execute(db)
+    // .await?;
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS threads(
             threadid BIGINT NOT NULL,

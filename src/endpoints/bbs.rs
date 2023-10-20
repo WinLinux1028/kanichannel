@@ -109,11 +109,16 @@ async fn do_post(
 
     let ip = header.get("X-Real-IP").ok_or("")?;
     let mut hasher = Sha3_224::new();
+    hasher.update(ip);
+    hasher.update(salt);
+    let mut hashed_ip = hasher.finalize();
     for _ in 0..5000 {
-        hasher.update(ip);
+        let mut hasher = Sha3_224::new();
+        hasher.update(hashed_ip);
         hasher.update(salt);
+        hashed_ip = hasher.finalize();
     }
-    let id = base62::encode(&hasher.finalize());
+    let id = base62::encode(&hashed_ip);
     let mut id = id.as_str();
     if id.len() > 10 {
         id = &id[0..10];

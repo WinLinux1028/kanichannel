@@ -11,12 +11,13 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt, BufWriter},
+    net::TcpListener,
 };
 
 use sqlx::PgPool;
 
 type Error = Box<dyn std::error::Error>;
-type Router = axum::Router<Arc<Server>, axum::body::Body>;
+type Router = axum::Router<Arc<Server>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -47,10 +48,8 @@ async fn main() -> Result<(), Error> {
 
     let app = endpoints::create_router().with_state(Arc::clone(&state));
 
-    axum::Server::bind(&state.config.listen)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = TcpListener::bind(&state.config.listen).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 
     Ok(())
 }

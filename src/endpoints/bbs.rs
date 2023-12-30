@@ -4,16 +4,22 @@ use std::sync::Arc;
 
 use axum::{
     body::HttpBody,
-    extract::{RawBody, State},
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     response::Response,
+    Form,
 };
 use base_62::base62;
+use encoding_rs::SHIFT_JIS;
 use rand::Rng;
 use sha3::{Digest, Sha3_224};
 
-pub async fn post(state: State<Arc<Server>>, header: HeaderMap, arg: RawBody) -> Response {
+pub async fn post(
+    state: State<Arc<Server>>,
+    header: HeaderMap,
+    arg: Form<RawArgument>,
+) -> Response {
     match post_(state, header, arg).await {
         Ok(o) => o,
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong.").into_response(),
@@ -23,25 +29,8 @@ pub async fn post(state: State<Arc<Server>>, header: HeaderMap, arg: RawBody) ->
 async fn post_(
     State(state): State<Arc<Server>>,
     header: HeaderMap,
-    RawBody(mut body): RawBody,
+    Form(arg): Form<RawArgument>,
 ) -> Result<Response, Error> {
-    let body = body.data().await.ok_or("")??;
-    let mut arg = String::new();
-    for i in body.split(|i| *i == 0x26) {
-        for i in i.split(|i| *i == 0x3D) {
-            let i: Vec<u8> = percent_encoding::percent_decode(i).collect();
-            let i = encoding_rs::SHIFT_JIS.decode(&i).0.into_owned();
-            let i: String =
-                percent_encoding::utf8_percent_encode(&i, percent_encoding::NON_ALPHANUMERIC)
-                    .collect();
-            arg.push_str(&i);
-            arg.push('=');
-        }
-        arg.pop();
-        arg.push('&');
-    }
-    arg.pop();
-    let arg: RawArgument = serde_urlencoded::from_str(&arg[..arg.len()])?;
     let mut arg = Argument::from(arg);
 
     if arg.message.trim().is_empty() {
@@ -183,30 +172,32 @@ pub struct Argument {
 #[allow(non_snake_case)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct RawArgument {
-    submit: String,
-    bbs: String,
-    key: Option<String>,
-    MESSAGE: String,
-    FROM: String,
-    mail: String,
-    subject: Option<String>,
+    submit: Vec<u8>,
+    bbs: Vec<u8>,
+    key: Option<Vec<u8>>,
+    MESSAGE: Vec<u8>,
+    FROM: Vec<u8>,
+    mail: Vec<u8>,
+    subject: Option<Vec<u8>>,
 }
 
 impl From<RawArgument> for Argument {
     fn from(mut value: RawArgument) -> Self {
-        if value.FROM.is_empty() {
-            value.FROM = "名無しさん".to_string();
+        let mut result = Argument {
+            submit: SHIFT_JIS.decode(&value.submit).0.into_owned(),
+            bbs: SHIFT_JIS.decode(&value.bbs).0.into_owned(),
+            key: value.key.map(|k| SHIFT_JIS.decode(&k).0.into_owned()),
+            message: SHIFT_JIS.decode(&value.MESSAGE).0.into_owned(),
+            from: SHIFT_JIS.decode(&value.FROM).0.into_owned(),
+            mail: SHIFT_JIS.decode(&value.mail).0.into_owned(),
+            subject: value.subject.map(|s| SHIFT_JIS.decode(&s).0.into_owned()),
+        };
+
+        if result.from.is_empty() {
+            result.from = "名無しさん".to_string();
         }
 
-        Argument {
-            submit: value.submit,
-            bbs: value.bbs,
-            key: value.key,
-            message: value.MESSAGE,
-            from: value.FROM,
-            mail: value.mail,
-            subject: value.subject,
-        }
+        result
     }
 }
 

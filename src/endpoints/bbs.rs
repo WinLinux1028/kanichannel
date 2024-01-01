@@ -1,44 +1,42 @@
-use crate::{Error, Server};
+use crate::{utils, Error, Server};
 
 use std::sync::Arc;
 
 use axum::{
-    body::HttpBody,
-    extract::State,
+    extract::{RawForm, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     response::Response,
-    Form,
 };
 use base_62::base62;
-use encoding_rs::SHIFT_JIS;
 use rand::Rng;
 use sha3::{Digest, Sha3_224};
 
-pub async fn post(
-    state: State<Arc<Server>>,
-    header: HeaderMap,
-    arg: Form<RawArgument>,
-) -> Response {
-    match post_(state, header, arg).await {
+pub async fn post(state: State<Arc<Server>>, header: HeaderMap, form: RawForm) -> Response {
+    match post_(state, header, form).await {
         Ok(o) => o,
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong.").into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response(),
     }
 }
 
 async fn post_(
     State(state): State<Arc<Server>>,
     header: HeaderMap,
-    Form(arg): Form<RawArgument>,
+    RawForm(form): RawForm,
 ) -> Result<Response, Error> {
+    let arg: RawArgument = utils::decord_form(form.into_iter().collect(), encoding_rs::SHIFT_JIS)?;
     let mut arg = Argument::from(arg);
 
-    if arg.message.trim().is_empty() {
+    if arg.message.is_empty() {
         return Err("".into());
     }
 
     if arg.bbs != "board" {
         return Err("".into());
+    }
+
+    if arg.from.is_empty() {
+        arg.from = "名無しさん".to_string();
     }
 
     let mut psql = state.db.begin().await?;
@@ -50,7 +48,7 @@ async fn post_(
             None => return Err("".into()),
         };
 
-        if subject.trim().is_empty() {
+        if subject.is_empty() {
             return Err("".into());
         }
 
@@ -100,6 +98,7 @@ async fn do_post(
     let mut hasher = Sha3_224::new();
     hasher.update(ip);
     hasher.update(salt);
+    hasher.update((timestamp / 604800).to_le_bytes());
     let mut hashed_ip = hasher.finalize();
     for _ in 0..5000 {
         let mut hasher = Sha3_224::new();
@@ -172,32 +171,26 @@ pub struct Argument {
 #[allow(non_snake_case)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct RawArgument {
-    submit: Vec<u8>,
-    bbs: Vec<u8>,
-    key: Option<Vec<u8>>,
-    MESSAGE: Vec<u8>,
-    FROM: Vec<u8>,
-    mail: Vec<u8>,
-    subject: Option<Vec<u8>>,
+    submit: String,
+    bbs: String,
+    key: Option<String>,
+    MESSAGE: String,
+    FROM: String,
+    mail: String,
+    subject: Option<String>,
 }
 
 impl From<RawArgument> for Argument {
-    fn from(mut value: RawArgument) -> Self {
-        let mut result = Argument {
-            submit: SHIFT_JIS.decode(&value.submit).0.into_owned(),
-            bbs: SHIFT_JIS.decode(&value.bbs).0.into_owned(),
-            key: value.key.map(|k| SHIFT_JIS.decode(&k).0.into_owned()),
-            message: SHIFT_JIS.decode(&value.MESSAGE).0.into_owned(),
-            from: SHIFT_JIS.decode(&value.FROM).0.into_owned(),
-            mail: SHIFT_JIS.decode(&value.mail).0.into_owned(),
-            subject: value.subject.map(|s| SHIFT_JIS.decode(&s).0.into_owned()),
-        };
-
-        if result.from.is_empty() {
-            result.from = "名無しさん".to_string();
+    fn from(value: RawArgument) -> Self {
+        Self {
+            submit: value.submit,
+            bbs: value.bbs,
+            key: value.key,
+            message: value.MESSAGE.trim_end().to_string(),
+            from: value.FROM.trim_end().to_string(),
+            mail: value.mail.trim_end().to_string(),
+            subject: value.subject.map(|s| s.trim_end().to_string()),
         }
-
-        result
     }
 }
 

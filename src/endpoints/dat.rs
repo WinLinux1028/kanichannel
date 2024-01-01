@@ -14,7 +14,7 @@ use sqlx::Row;
 pub async fn get(state: State<Arc<Server>>, arg: Path<Argument>) -> Response {
     match get_(state, arg).await {
         Ok(o) => o,
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong.").into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response(),
     }
 }
 

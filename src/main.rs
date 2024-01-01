@@ -3,6 +3,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod endpoints;
 mod postgres;
+mod utils;
 
 use crate::postgres::PgConfig;
 

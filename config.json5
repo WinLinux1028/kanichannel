@@ -1,0 +1,7 @@
+{
+    "listen": "127.0.0.1:4545",
+    "db": {
+        "connect": "postgres://postgres:postgres@127.0.0.1:5432/bbs",
+        "max_conn": 16,
+    }
+}

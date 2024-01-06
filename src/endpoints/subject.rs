@@ -1,16 +1,26 @@
+use crate::{Error, Server};
+use entity::*;
+
 use std::sync::Arc;
 
-use crate::{Error, Server};
-
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     response::Response,
 };
+use encoding_rs::SHIFT_JIS;
+use sea_orm::{
+    sea_query::Expr, ColumnTrait, EntityTrait, FromQueryResult, JoinType, QueryFilter, QueryOrder,
+    QuerySelect, RelationTrait,
+};
 
-pub async fn get(state: State<Arc<Server>>, arg: Query<Argument>) -> Response {
-    match get_(state, arg).await {
+pub async fn get(
+    state: State<Arc<Server>>,
+    parg: Path<PathArgument>,
+    qarg: Query<QueryArgument>,
+) -> Response {
+    match get_(state, parg, qarg).await {
         Ok(o) => o,
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response(),
     }
@@ -18,33 +28,45 @@ pub async fn get(state: State<Arc<Server>>, arg: Query<Argument>) -> Response {
 
 async fn get_(
     State(state): State<Arc<Server>>,
-    Query(arg): Query<Argument>,
+    Path(parg): Path<PathArgument>,
+    Query(qarg): Query<QueryArgument>,
 ) -> Result<Response, Error> {
-    let offset = match arg.page.map(|p| (p, p >= 0)) {
-        Some((s, true)) => s * 1000,
-        Some((_, false)) => return Err("".into()),
-        None => 0,
+    let threads = if let Some((_, page)) = parg.board.rsplit_once('_') {
+        let _: u64 = page.parse()?;
+        vec![Subject {
+            id: 1000000001,
+            name: "Welcome to the virtual board.".to_string(),
+            post_count: 1,
+        }]
+    } else {
+        let page = qarg.page.unwrap_or(0);
+
+        thread::Entity::find()
+            .select_only()
+            .column(thread::Column::Id)
+            .column(thread::Column::Name)
+            .column_as(post::Column::Id.count(), "post_count")
+            .column_as(post::Column::Id.max(), "id_max")
+            .join(JoinType::InnerJoin, thread::Relation::Post.def())
+            .filter(thread::Column::BoardId.eq(&parg.board))
+            .filter(post::Column::Mail.ne("sage"))
+            .group_by(thread::Column::Id)
+            .group_by(thread::Column::Name)
+            .order_by_desc(Expr::cust("id_max"))
+            .limit(1000)
+            .offset(page * 1000)
+            .into_model::<Subject>()
+            .all(&state.db)
+            .await?
     };
 
-    let threads: Vec<Subject> = sqlx::query_as(
-        "SELECT threadid, title, posts
-                FROM threads
-                    NATURAL INNER JOIN 
-                        (SELECT threadid, COUNT(threadid) AS posts
-                            FROM posts
-                            GROUP BY threadid)
-                ORDER BY lastupdate DESC
-                LIMIT 1000
-                OFFSET $1;",
-    )
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await?;
+    if threads.is_empty() {
+        return Err("".into());
+    }
 
     let mut result = Vec::new();
     for i in threads.into_iter().map(|i| i.to_string()) {
-        let (i, _, _) = encoding_rs::SHIFT_JIS.encode(&i);
-        result.append(&mut i.into_owned());
+        result.append(&mut SHIFT_JIS.encode(&i).0.into_owned());
         result.push(0x0A);
     }
 
@@ -58,19 +80,24 @@ async fn get_(
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Argument {
-    page: Option<i64>,
+pub struct QueryArgument {
+    page: Option<u64>,
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct PathArgument {
+    board: String,
+}
+
+#[derive(FromQueryResult)]
 struct Subject {
-    threadid: i64,
-    title: String,
-    posts: i64,
+    id: i64,
+    name: String,
+    post_count: i64,
 }
 
 impl ToString for Subject {
     fn to_string(&self) -> String {
-        format!("{}.dat<>{} ({})", self.threadid, &self.title, self.posts)
+        format!("{}.dat<>{} ({})", self.id, &self.name, self.post_count)
     }
 }

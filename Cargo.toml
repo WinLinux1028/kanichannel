@@ -1,24 +1,30 @@
+[workspace]
+members = [".", "entity", "migration"]
+
 [package]
-name = "bbschan"
+name = "kanichannel"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+entity = { path = "entity" }
+sea-orm = { version = "0.12", features = [
+    "sqlx-mysql",
+    "sqlx-postgres",
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+
 mimalloc = { version = "0.1", default-features = false }
 
 serde = { version = "1", features = ["derive", "alloc", "rc"] }
-serde_json = "1"
+json5 = "0.4"
 
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["http2", "multipart", "ws"] }
-
-sqlx = { version = "0.7", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "postgres",
-] }
 
 encoding_rs = "0.8"
 chrono = "0.4"

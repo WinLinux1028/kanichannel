@@ -1,4 +1,4 @@
-mod bbs;
+//mod bbs;
 mod dat;
 mod subject;
 
@@ -8,7 +8,7 @@ use axum::routing;
 
 pub fn create_router() -> Router {
     Router::new()
-        .route("/board/subject.txt", routing::get(subject::get))
-        .route("/test/bbs.cgi", routing::post(bbs::post))
-        .route("/board/dat/:id", routing::get(dat::get))
+        .route("/:board/subject.txt", routing::get(subject::get))
+        .route("/:board/dat/:id", routing::get(dat::get))
+    // .route("/test/bbs.cgi", routing::post(bbs::post))
 }

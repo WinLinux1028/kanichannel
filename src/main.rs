@@ -2,12 +2,10 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod endpoints;
-mod postgres;
 mod utils;
 
-use crate::postgres::PgConfig;
-
 use rand::Rng;
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     fs::File,
@@ -15,19 +13,11 @@ use tokio::{
     net::TcpListener,
 };
 
-use sqlx::PgPool;
-
 type Error = Box<dyn std::error::Error>;
 type Router = axum::Router<Arc<Server>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let mut config = String::new();
-    File::open("./config.json")
-        .await?
-        .read_to_string(&mut config)
-        .await?;
-
     let mut salt_f = File::open("./salt.bin").await;
     if salt_f.is_err() {
         let mut new_salt = BufWriter::new(File::create("./salt.bin").await?);
@@ -42,8 +32,16 @@ async fn main() -> Result<(), Error> {
     let mut salt = Vec::new();
     salt_f?.read_to_end(&mut salt).await?;
 
-    let config: Config = serde_json::from_str(&config)?;
-    let db = postgres::connect(&config.postgres).await?;
+    let mut config = String::new();
+    File::open("./config.json5")
+        .await?
+        .read_to_string(&mut config)
+        .await?;
+    let config: Config = json5::from_str(&config).unwrap();
+
+    let mut db_config = ConnectOptions::new(&config.db.connect);
+    db_config.max_connections(config.db.max_conn);
+    let db = Database::connect(db_config).await.unwrap();
 
     let state = Arc::new(Server { config, db, salt });
 
@@ -57,12 +55,18 @@ async fn main() -> Result<(), Error> {
 
 struct Server {
     config: Config,
-    db: PgPool,
+    db: DatabaseConnection,
     salt: Vec<u8>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Config {
     listen: SocketAddr,
-    postgres: PgConfig,
+    db: DbConfig,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DbConfig {
+    connect: String,
+    max_conn: u32,
 }

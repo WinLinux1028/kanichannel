@@ -1,6 +1,7 @@
-use std::sync::Arc;
-
 use crate::{Error, Server};
+use entity::*;
+
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
@@ -9,7 +10,7 @@ use axum::{
     response::Response,
 };
 use chrono::TimeZone;
-use sqlx::Row;
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect};
 
 pub async fn get(state: State<Arc<Server>>, arg: Path<Argument>) -> Response {
     match get_(state, arg).await {
@@ -22,55 +23,66 @@ pub async fn get_(
     State(state): State<Arc<Server>>,
     Path(arg): Path<Argument>,
 ) -> Result<Response, Error> {
-    let mut id_page = match arg.id.strip_suffix(".dat") {
-        Some(s) => s.split('_'),
-        None => return Err("".into()),
-    };
-
-    let threadid: i64 = match id_page.next() {
+    let thread: u64 = match arg.id.strip_suffix(".dat") {
         Some(s) => s.parse()?,
         None => return Err("".into()),
     };
-    let page: i64 = match id_page.next() {
-        Some(s) => s.parse()?,
-        None => 0,
-    };
 
-    if threadid < 0 || page < 0 {
-        return Err("".into());
+    let mut page: u64;
+    let board;
+    match arg.board.rsplit_once('_') {
+        Some((b, p)) => {
+            board = b;
+            page = p.parse()?;
+        }
+        None => {
+            board = &arg.board;
+            page = 0;
+        }
     }
 
-    let thread_title = sqlx::query("SELECT title FROM threads WHERE threadid=$1;")
-        .bind(threadid)
-        .fetch_optional(&state.db)
-        .await?;
-    let thread_title: String = match thread_title {
-        Some(s) => s.try_get(0)?,
-        None => return Err("".into()),
+    let thread_title;
+    let posts = if thread == 1000000001 {
+        page = 0;
+        thread_title = "Welcome to virtual board.".to_string();
+        vec![Post {
+            name: "</b>System".to_string(),
+            mail: "".to_string(),
+            id: 65536000065536,
+            poster_id: "System".to_string(),
+            body: "There is nothing here.".to_string(),
+        }]
+    } else {
+        thread_title = thread::Entity::find()
+            .filter(thread::Column::BoardId.eq(board))
+            .filter(thread::Column::Id.eq(thread))
+            .one(&state.db)
+            .await?
+            .ok_or("")?
+            .name;
+
+        post::Entity::find()
+            .filter(post::Column::BoardId.eq(board))
+            .filter(post::Column::ThreadId.eq(thread))
+            .order_by_asc(post::Column::Id)
+            .limit(1000)
+            .offset(page * 1000)
+            .into_model::<Post>()
+            .all(&state.db)
+            .await?
     };
 
-    let posts: Vec<Post> = sqlx::query_as(
-        "SELECT name, mail, date, id, body
-                FROM posts
-                WHERE
-                    threadid=$1
-                ORDER BY date ASC
-                LIMIT 1000
-                OFFSET $2;",
-    )
-    .bind(threadid)
-    .bind(page * 1000)
-    .fetch_all(&state.db)
-    .await?;
-
-    let mut posts = posts.into_iter().map(|i| i.to_string());
     let mut result = Vec::new();
+    let mut posts = posts.into_iter().map(|i| i.to_string());
 
     let i = posts.next().ok_or("")?;
     let (i, _, _) = encoding_rs::SHIFT_JIS.encode(&i);
     result.append(&mut i.into_owned());
     let (i, _, _) = encoding_rs::SHIFT_JIS.encode(&thread_title);
     result.append(&mut i.into_owned());
+    if page != 0 {
+        result.extend_from_slice(format!("(Page: {})", page + 1).as_bytes());
+    }
     result.push(0x0A);
 
     for i in posts {
@@ -90,21 +102,22 @@ pub async fn get_(
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Argument {
+    board: String,
     id: String,
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(FromQueryResult)]
 struct Post {
     name: String,
     mail: String,
-    date: i64,
-    id: String,
+    id: i64,
+    poster_id: String,
     body: String,
 }
 
 impl ToString for Post {
     fn to_string(&self) -> String {
-        let date = chrono::Local.timestamp_opt(self.date >> 16, 0).unwrap();
+        let date = chrono::Local.timestamp_opt(self.id >> 16, 0).unwrap();
 
         let weekday = match format!("{}", date.format("%w")).as_str() {
             "0" => "日",
@@ -124,7 +137,7 @@ impl ToString for Post {
             date.format("%Y/%m/%d"),
             weekday,
             date.format("%T"),
-            &self.id,
+            &self.poster_id,
             &self.body
         )
     }

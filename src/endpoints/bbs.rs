@@ -1,4 +1,5 @@
 use crate::{utils, Error, Server};
+use entity::*;
 
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use axum::{
 };
 use base_62::base62;
 use rand::Rng;
+use sea_orm::{ActiveModelTrait, DatabaseTransaction, IntoActiveModel, TransactionTrait};
 use sha3::{Digest, Sha3_224};
 
 pub async fn post(state: State<Arc<Server>>, header: HeaderMap, form: RawForm) -> Response {
@@ -30,44 +32,52 @@ async fn post_(
     if arg.message.is_empty() {
         return Err("".into());
     }
-
-    if arg.bbs != "board" {
+    if arg.key.as_deref() == Some("1000000001") {
         return Err("".into());
     }
 
-    if arg.from.is_empty() {
-        arg.from = "名無しさん".to_string();
+    let mut page = None;
+    if let Some((bbs, page_)) = arg.bbs.rsplit_once('_') {
+        page = Some(page_.to_string());
+        arg.bbs = bbs.to_string();
     }
 
-    let mut psql = state.db.begin().await?;
+    let trx = state.db.begin().await?;
     let timestamp = chrono::Local::now().timestamp();
 
     if arg.submit == "新規スレッド作成" {
+        if page.is_some() {
+            return Err("".into());
+        }
+
         let subject = match &arg.subject {
             Some(s) => s,
             None => return Err("".into()),
         };
-
         if subject.is_empty() {
             return Err("".into());
         }
 
-        sqlx::query("INSERT INTO threads(threadid, title, lastupdate) VALUES ($1, $2, $3)")
-            .bind(timestamp)
-            .bind(subject)
-            .bind(timestamp)
-            .execute(&mut *psql)
-            .await?;
-        arg.key = Some(timestamp.to_string());
+        thread::Model {
+            board_id: arg.bbs.clone(),
+            id: timestamp,
+            name: subject.clone(),
+        }
+        .into_active_model()
+        .insert(&trx)
+        .await?;
 
-        do_post(&mut psql, &state.salt, header, &arg, timestamp).await?;
+        if arg.mail == "sage" {
+            arg.mail = "".to_string();
+        }
+        arg.key = Some(timestamp.to_string());
     } else if arg.submit == "書き込む" {
-        do_post(&mut psql, &state.salt, header, &arg, timestamp).await?;
     } else {
         return Err("".into());
     }
 
-    psql.commit().await?;
+    do_post(&trx, &state.salt, header, &arg, timestamp).await?;
+    trx.commit().await?;
 
     let mut response = HTML_OK.as_slice().into_response();
     let headers = response.headers_mut();
@@ -79,21 +89,12 @@ async fn post_(
 }
 
 async fn do_post(
-    psql: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    trx: &DatabaseTransaction,
     salt: &[u8],
     header: HeaderMap,
     arg: &Argument,
     timestamp: i64,
 ) -> Result<(), Error> {
-    let threadid: i64 = match arg.key.as_ref().map(|k| k.split('_').next()) {
-        Some(Some(s)) => s.parse()?,
-        _ => return Err("".into()),
-    };
-    let name = sanitize(&arg.from);
-    let mail = sanitize(&arg.mail);
-    let date = ((timestamp << 16) | (rand::thread_rng().gen::<u16>() as i64)).abs();
-    let body = sanitize(&arg.message);
-
     let ip = header.get("X-Real-IP").ok_or("")?;
     let mut hasher = Sha3_224::new();
     hasher.update(ip);
@@ -106,32 +107,34 @@ async fn do_post(
         hasher.update(salt);
         hashed_ip = hasher.finalize();
     }
-    let id = base62::encode(&hashed_ip);
-    let mut id = id.as_str();
-    if id.len() > 10 {
-        id = &id[0..10];
+    let poster_id = base62::encode(&hashed_ip);
+    let mut poster_id = poster_id.as_str();
+    if poster_id.len() > 10 {
+        poster_id = &poster_id[0..10];
     }
 
-    sqlx::query(
-        "INSERT INTO posts(threadid, name, mail, date, id, body)
-                VALUES ($1, $2, $3, $4, $5, $6)",
-    )
-    .bind(threadid)
-    .bind(name)
-    .bind(mail)
-    .bind(date)
-    .bind(id)
-    .bind(body)
-    .execute(&mut **psql)
+    let id = ((timestamp << 16) | (rand::thread_rng().gen::<u16>() as i64)).abs();
+
+    let name = if arg.from.is_empty() {
+        "</b>名無しさん".to_string()
+    } else if arg.from == "fusianasan" {
+        format!("</b>{}", header.get("X-Real-IP").ok_or("")?.to_str()?)
+    } else {
+        sanitize(&arg.from)
+    };
+
+    post::Model {
+        board_id: arg.bbs.clone(),
+        thread_id: arg.key.clone().ok_or("")?.parse()?,
+        id,
+        name,
+        mail: sanitize(&arg.mail),
+        poster_id: poster_id.to_string(),
+        body: sanitize(&arg.message),
+    }
+    .into_active_model()
+    .insert(trx)
     .await?;
-
-    if arg.mail != "sage" {
-        sqlx::query("UPDATE threads SET lastupdate=$1 WHERE threadid=$2")
-            .bind(timestamp)
-            .bind(threadid)
-            .execute(&mut **psql)
-            .await?;
-    }
 
     Ok(())
 }

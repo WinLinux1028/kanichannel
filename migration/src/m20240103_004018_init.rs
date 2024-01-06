@@ -13,7 +13,6 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Board::Id).text().not_null())
                     .col(ColumnDef::new(Board::Title).text().not_null())
-                    .col(ColumnDef::new(Board::NanashiName).text().not_null())
                     .primary_key(Index::create().col(Board::Id))
                     .to_owned(),
             )
@@ -88,7 +87,6 @@ pub enum Board {
     Table,
     Id,
     Title,
-    NanashiName,
 }
 
 #[derive(DeriveIden)]

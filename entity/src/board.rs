@@ -9,8 +9,6 @@ pub struct Model {
     pub id: String,
     #[sea_orm(column_type = "Text")]
     pub title: String,
-    #[sea_orm(column_type = "Text")]
-    pub nanashi_name: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

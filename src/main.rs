@@ -62,6 +62,7 @@ struct Server {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Config {
     listen: SocketAddr,
+    domain: String,
     db: DbConfig,
 }
 

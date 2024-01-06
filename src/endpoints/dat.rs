@@ -12,6 +12,8 @@ use axum::{
 use chrono::TimeZone;
 use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect};
 
+const MAX_POSTS: u64 = 1000;
+
 pub async fn get(state: State<Arc<Server>>, arg: Path<Argument>) -> Response {
     match get_(state, arg).await {
         Ok(o) => o,
@@ -45,31 +47,77 @@ pub async fn get_(
     let posts = if thread == 1000000001 {
         page = 0;
         thread_title = "Welcome to virtual board.".to_string();
+
+        let body = format!(
+            "There is nothing here.<br>You should go to https://{}/{}/",
+            &state.config.domain, &arg.board
+        );
+
         vec![Post {
             name: "</b>System".to_string(),
             mail: "".to_string(),
             id: 65536000065536,
             poster_id: "System".to_string(),
-            body: "There is nothing here.".to_string(),
+            body,
         }]
     } else {
-        thread_title = thread::Entity::find()
+        let thread = thread::Entity::find()
             .filter(thread::Column::BoardId.eq(board))
             .filter(thread::Column::Id.eq(thread))
             .one(&state.db)
             .await?
-            .ok_or("")?
-            .name;
+            .ok_or("")?;
+        thread_title = thread.name;
 
-        post::Entity::find()
+        let mut posts_ = post::Entity::find()
             .filter(post::Column::BoardId.eq(board))
-            .filter(post::Column::ThreadId.eq(thread))
+            .filter(post::Column::ThreadId.eq(thread.id))
             .order_by_asc(post::Column::Id)
-            .limit(1000)
-            .offset(page * 1000)
+            .limit(MAX_POSTS)
+            .offset(page * MAX_POSTS)
             .into_model::<Post>()
             .all(&state.db)
-            .await?
+            .await?;
+
+        if posts_.len() == usize::try_from(MAX_POSTS)? {
+            let body = format!(
+                "Next thread: https://{}/test/read.cgi/{}_{}/{}/",
+                &state.config.domain,
+                board,
+                page + 1,
+                thread.id
+            );
+
+            posts_.push(Post {
+                name: "</b>Info".to_string(),
+                mail: "".to_string(),
+                id: posts_.last().ok_or("")?.id,
+                poster_id: "Info".to_string(),
+                body,
+            })
+        }
+        if page != 0 {
+            let body = format!(
+                "Previous thread: https://{}/test/read.cgi/{}_{}/{}/",
+                &state.config.domain,
+                board,
+                page - 1,
+                thread.id
+            );
+
+            posts_.insert(
+                0,
+                Post {
+                    name: "</b>Info".to_string(),
+                    mail: "".to_string(),
+                    id: thread.id << 16,
+                    poster_id: "Info".to_string(),
+                    body,
+                },
+            )
+        }
+
+        posts_
     };
 
     let mut result = Vec::new();
@@ -81,7 +129,7 @@ pub async fn get_(
     let (i, _, _) = encoding_rs::SHIFT_JIS.encode(&thread_title);
     result.append(&mut i.into_owned());
     if page != 0 {
-        result.extend_from_slice(format!("(Page: {})", page + 1).as_bytes());
+        result.extend_from_slice(format!(" Part{}", page + 1).as_bytes());
     }
     result.push(0x0A);
 

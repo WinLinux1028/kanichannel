@@ -13,6 +13,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Board::Id).text().not_null())
                     .col(ColumnDef::new(Board::Title).text().not_null())
+                    .col(ColumnDef::new(Board::Category).text().not_null())
                     .primary_key(Index::create().col(Board::Id))
                     .to_owned(),
             )
@@ -58,10 +59,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_index(Index::create().table(Post::Table).col(Post::Mail).take())
-            .await?;
-
         Ok(())
     }
 
@@ -87,6 +84,7 @@ pub enum Board {
     Table,
     Id,
     Title,
+    Category,
 }
 
 #[derive(DeriveIden)]

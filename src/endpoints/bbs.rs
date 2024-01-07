@@ -116,7 +116,7 @@ async fn do_post(
     let id = ((timestamp << 16) | (rand::thread_rng().gen::<u16>() as i64)).abs();
 
     let name = if arg.from.is_empty() {
-        "</b>名無しさん".to_string()
+        "</b>Anonymous".to_string()
     } else if arg.from == "fusianasan" {
         format!("</b>{}", header.get("X-Real-IP").ok_or("")?.to_str()?)
     } else {
@@ -190,9 +190,9 @@ impl From<RawArgument> for Argument {
             bbs: value.bbs,
             key: value.key,
             message: value.MESSAGE.trim_end().to_string(),
-            from: value.FROM.trim_end().to_string(),
-            mail: value.mail.trim_end().to_string(),
-            subject: value.subject.map(|s| s.trim_end().to_string()),
+            from: value.FROM.trim().to_string(),
+            mail: value.mail.trim().to_string(),
+            subject: value.subject.map(|s| s.trim().to_string()),
         }
     }
 }

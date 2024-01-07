@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "entity", "migration"]
+members = [".", "entity", "migration", "bbsctl"]
 
 [package]
 name = "kanichannel"

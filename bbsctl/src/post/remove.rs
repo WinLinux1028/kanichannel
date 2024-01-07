@@ -2,7 +2,8 @@ use crate::STATE;
 
 use entity::*;
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, Condition, EntityTrait, QueryFilter, TransactionTrait,
+    sea_query::{Expr, Query},
+    ColumnTrait, Condition, EntityTrait, QueryFilter,
 };
 
 use std::io::Write;
@@ -22,6 +23,7 @@ pub async fn run() {
     stdout.flush().unwrap();
     let mut thread_id = String::new();
     stdin.read_line(&mut thread_id).await.unwrap();
+    let thread_id: u64 = thread_id.trim().parse().unwrap();
 
     println!("You can specify a range like 100-200, 100-, -200 or a number like 100.");
     println!("If specifying multiple, separate them with commas.");
@@ -75,8 +77,17 @@ pub async fn run() {
         .filter(post::Column::BoardId.eq(board_id))
         .filter(post::Column::ThreadId.eq(thread_id))
         .filter(condition)
-        .filter(post::Column::Id.ne(65536000000000_u64))
-        .exec(&STATE.get().unwrap().db.begin().await.unwrap())
+        .filter(
+            post::Column::Id.not_in_subquery(
+                Query::select()
+                    .expr(post::Column::Id.min())
+                    .from(post::Entity)
+                    .and_where(post::Column::BoardId.eq(board_id))
+                    .and_where(post::Column::ThreadId.eq(thread_id))
+                    .to_owned(),
+            ),
+        )
+        .exec(&STATE.get().unwrap().db)
         .await
         .unwrap();
 

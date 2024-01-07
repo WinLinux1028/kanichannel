@@ -26,6 +26,11 @@ async fn post_(
     header: HeaderMap,
     RawForm(form): RawForm,
 ) -> Result<Response, Error> {
+    let referer = header.get("referer").ok_or("")?.to_str()?;
+    if referer.starts_with(&format!("https://{}/", &state.config.domain)) {
+        return Err("".into());
+    }
+
     let arg: RawArgument = utils::decord_form(form.into_iter().collect(), encoding_rs::SHIFT_JIS)?;
     let mut arg = Argument::from(arg);
 
@@ -49,11 +54,7 @@ async fn post_(
         if page.is_some() {
             return Err("".into());
         }
-
-        let subject = match &arg.subject {
-            Some(s) => s,
-            None => return Err("".into()),
-        };
+        let subject = arg.subject.as_ref().ok_or("")?;
         if subject.is_empty() {
             return Err("".into());
         }

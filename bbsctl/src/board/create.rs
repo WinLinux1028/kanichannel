@@ -67,7 +67,7 @@ pub async fn run() {
         board_id: board_id.to_string(),
         thread_id: 1000000000,
         id: 65536000000000,
-        name: "</b>System".to_string(),
+        name: "</b>System<b>".to_string(),
         mail: "".to_string(),
         poster_id: "System".to_string(),
         body: "Congratulations!<br>New board has been created.".to_string(),

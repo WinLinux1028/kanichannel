@@ -71,7 +71,7 @@ pub async fn run() {
     }
 
     post::Entity::update_many()
-        .col_expr(post::Column::Name, Expr::value("</b>System"))
+        .col_expr(post::Column::Name, Expr::value("</b>System<b>"))
         .col_expr(post::Column::Mail, Expr::value("sage"))
         .col_expr(post::Column::Body, Expr::value("Deleted by administrator"))
         .filter(post::Column::BoardId.eq(board_id))

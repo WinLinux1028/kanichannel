@@ -54,7 +54,7 @@ pub async fn get_(
         );
 
         vec![Post {
-            name: "</b>System".to_string(),
+            name: "</b>System<b>".to_string(),
             mail: "".to_string(),
             id: 65536000065536,
             poster_id: "System".to_string(),
@@ -89,7 +89,7 @@ pub async fn get_(
             );
 
             posts_.push(Post {
-                name: "</b>Info".to_string(),
+                name: "</b>Info<b>".to_string(),
                 mail: "".to_string(),
                 id: posts_.last().ok_or("")?.id,
                 poster_id: "Info".to_string(),
@@ -108,7 +108,7 @@ pub async fn get_(
             posts_.insert(
                 0,
                 Post {
-                    name: "</b>Info".to_string(),
+                    name: "</b>Info<b>".to_string(),
                     mail: "".to_string(),
                     id: thread.id << 16,
                     poster_id: "Info".to_string(),
